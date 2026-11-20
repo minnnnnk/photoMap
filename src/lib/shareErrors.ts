@@ -7,8 +7,17 @@ export function shareErrorMessage(e: unknown): string {
   if (code === 'over_email_send_rate_limit' || err.status === 429) {
     return '메일을 너무 자주 보냈어요. 잠시 후 다시 시도해 주세요.';
   }
-  if (code === 'otp_expired' || code === 'invalid_credentials' || /token has expired or is invalid/i.test(message)) {
-    return '코드가 맞지 않거나 만료됐어요. 메일의 코드를 다시 확인해 주세요.';
+  if (code === 'invalid_credentials' || /invalid login credentials/i.test(message)) {
+    return '이메일 또는 비밀번호가 맞지 않아요.';
+  }
+  if (code === 'user_already_exists' || /already registered/i.test(message)) {
+    return '이미 가입된 이메일이에요. 로그인해 주세요.';
+  }
+  if (code === 'weak_password' || /password should be at least/i.test(message)) {
+    return '비밀번호는 6자 이상으로 정해 주세요.';
+  }
+  if (code === 'email_not_confirmed') {
+    return '이메일 확인이 필요하다고 나와요. Supabase에서 Confirm email 설정을 확인해 주세요.';
   }
   if (code === 'email_address_invalid' || /invalid.*email|email.*invalid/i.test(message)) {
     return '이메일 주소를 다시 확인해 주세요.';
