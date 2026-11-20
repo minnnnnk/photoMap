@@ -28,7 +28,20 @@ export type NewFormPhoto = {
   gps: Coord | null;
 };
 
-export type FormPhoto = StoredFormPhoto | NewFormPhoto;
+/** 공유 핀 수정 화면에서, 이미 서버에 올라가 있는 사진 */
+export type RemoteFormPhoto = {
+  kind: 'remote';
+  id: string;
+  storagePath: string;
+  /** 화면 표시용 서명 URL */
+  uri: string;
+  width: number | null;
+  height: number | null;
+  takenAt: string | null;
+  gps: Coord | null;
+};
+
+export type FormPhoto = StoredFormPhoto | NewFormPhoto | RemoteFormPhoto;
 
 /** 핀을 넣을 앨범: 이 기기의 앨범 또는 서버의 공유 앨범 */
 export type AlbumChoice = { kind: 'local' | 'shared'; id: string } | null;
@@ -44,7 +57,9 @@ export type PinFormValues = Coord & {
 const localAlbumId = (album: AlbumChoice) => (album?.kind === 'local' ? album.id : null);
 
 export function formPhotoUri(photo: FormPhoto): string {
-  return photo.kind === 'stored' ? photoUri(photo.fileName) : photo.sourceUri;
+  if (photo.kind === 'stored') return photoUri(photo.fileName);
+  if (photo.kind === 'remote') return photo.uri;
+  return photo.sourceUri;
 }
 
 export function toFormValues({ pin, photos }: PinDetail): PinFormValues {
@@ -78,6 +93,7 @@ async function importNewPhotos(photos: FormPhoto[], copied: string[]) {
       kept.push({ id: photo.id, sortOrder: index });
       continue;
     }
+    if (photo.kind === 'remote') throw new Error('서버 사진은 이 기기 핀에 넣을 수 없어요');
     const fileName = await importPhoto(photo.sourceUri, photo.id);
     copied.push(fileName);
     added.push({

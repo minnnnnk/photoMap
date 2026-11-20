@@ -45,8 +45,10 @@ type Props = {
   initialValues: PinFormValues;
   initialSource: LocationSource;
   submitLabel: string;
-  /** any: 이 기기 앨범과 공유 앨범 모두, local: 이 기기 앨범만 */
-  albumMode: 'any' | 'local';
+  /** any: 이 기기 앨범과 공유 앨범 모두, local: 이 기기 앨범만, fixed: 앨범을 바꿀 수 없음 */
+  albumMode: 'any' | 'local' | 'fixed';
+  /** albumMode가 fixed일 때 보여 줄 앨범 이름 */
+  fixedAlbumLabel?: string;
   /** 저장만 한다. 실패하면 throw 한다. */
   onSubmit: (values: PinFormValues) => Promise<void>;
   /** 저장에 성공한 뒤 호출된다. 화면 닫기는 여기서 한다. */
@@ -59,6 +61,7 @@ export function PinForm({
   initialSource,
   submitLabel,
   albumMode,
+  fixedAlbumLabel,
   onSubmit,
   onSaved,
 }: Props) {
@@ -284,7 +287,11 @@ export function PinForm({
       />
 
       <Text style={styles.label}>앨범</Text>
-      <AlbumPicker value={album} onChange={setAlbum} allowShared={albumMode === 'any'} />
+      {albumMode === 'fixed' ? (
+        <Text style={styles.fixedAlbum}>{fixedAlbumLabel ?? '앨범 없음'}</Text>
+      ) : (
+        <AlbumPicker value={album} onChange={setAlbum} allowShared={albumMode === 'any'} />
+      )}
 
       <Text style={styles.label}>메모</Text>
       <TextInput
@@ -452,6 +459,10 @@ const styles = StyleSheet.create({
   },
   memo: {
     minHeight: 110,
+  },
+  fixedAlbum: {
+    fontSize: 14,
+    color: '#3b4250',
   },
   saveButton: {
     marginTop: 28,
