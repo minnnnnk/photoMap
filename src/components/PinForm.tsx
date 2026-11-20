@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import * as ImagePicker from 'expo-image-picker';
+import { usePreventRemove } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -42,15 +43,19 @@ type Props = {
   initialValues: PinFormValues;
   initialSource: LocationSource;
   submitLabel: string;
-  /** 저장에 실패하면 throw 한다. 성공 후 화면 이동은 호출한 쪽에서 한다. */
+  /** 저장만 한다. 실패하면 throw 한다. */
   onSubmit: (values: PinFormValues) => Promise<void>;
+  /** 저장에 성공한 뒤 호출된다. 화면 닫기는 여기서 한다. */
+  onSaved: () => void;
 };
 
 /** 사진 추가 화면과 핀 수정 화면이 함께 쓰는 입력 양식 */
-export function PinForm({ initialValues, initialSource, submitLabel, onSubmit }: Props) {
+export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, onSaved }: Props) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
+  // 처음 값은 한 번만 잡아 두고, 바뀐 내용이 있는지 비교할 때 쓴다.
+  const [initial] = useState(initialValues);
   const [initialCoord] = useState<Coord>(() => ({
     latitude: initialValues.latitude,
     longitude: initialValues.longitude,
@@ -61,6 +66,31 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit }:
   const [title, setTitle] = useState(initialValues.title);
   const [memo, setMemo] = useState(initialValues.memo);
   const [saving, setSaving] = useState(false);
+  // 저장했거나 "나가기"를 고른 뒤에는 더 묻지 않는다.
+  const [leaving, setLeaving] = useState(false);
+
+  const isDirty =
+    title !== initial.title ||
+    memo !== initial.memo ||
+    coord.latitude !== initialCoord.latitude ||
+    coord.longitude !== initialCoord.longitude ||
+    photos.length !== initial.photos.length ||
+    photos.some((p, i) => p.id !== initial.photos[i]?.id);
+
+  // 바뀐 내용이 있으면 쓸어 닫기·뒤로 가기를 막고 먼저 묻는다.
+  const disablePrevention = usePreventRemove(isDirty && !leaving, ({ repeat }) => {
+    Alert.alert('저장하지 않고 나갈까요?', '고친 내용이 사라져요.', [
+      { text: '계속 고치기', style: 'cancel' },
+      {
+        text: '나가기',
+        style: 'destructive',
+        onPress: () => {
+          setLeaving(true);
+          repeat();
+        },
+      },
+    ]);
+  });
 
   // 위치 정보는 새로 고른 사진에만 있다 (저장된 사진은 GPS를 따로 보관하지 않음).
   const photoGps =
@@ -135,12 +165,16 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit }:
         longitude: coord.longitude,
         photos,
       });
-      // 성공하면 화면이 닫히므로 saving을 풀지 않는다 (두 번 눌림 방지).
     } catch (e) {
       console.warn('핀 저장 실패', e);
       Alert.alert('저장하지 못했어요', e instanceof Error ? e.message : String(e));
       setSaving(false);
+      return;
     }
+    // 저장에 성공하면 확인 없이 닫는다. saving은 풀지 않는다 (두 번 눌림 방지).
+    setLeaving(true);
+    disablePrevention();
+    onSaved();
   };
 
   return (

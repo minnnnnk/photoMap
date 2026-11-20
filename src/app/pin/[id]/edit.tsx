@@ -46,10 +46,8 @@ export default function EditPinScreen() {
       initialValues={initialValues}
       initialSource="saved"
       submitLabel="수정 내용 저장"
-      onSubmit={async (values) => {
-        await editPin(db, id, values);
-        router.back();
-      }}
+      onSubmit={(values) => editPin(db, id, values)}
+      onSaved={() => router.back()}
     />
   );
 }
