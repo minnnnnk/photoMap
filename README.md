@@ -4,7 +4,7 @@
 사진을 고르면 사진에 담긴 위치(GPS)에 핀이 자동으로 놓이고, 위치 정보가 없으면 지도에서 직접 고를 수 있습니다.
 iOS와 Android를 모두 지원하고, 국내와 해외 지도를 모두 쓸 수 있습니다.
 
-> 지금은 혼자 쓰는 기록용 앱이라 데이터를 기기 안에만 저장합니다. 공유 기능은 나중에 추가할 예정입니다.
+> 내 핀은 기기 안에만 저장합니다. 공유 앨범만 서버(Supabase)에 올라갑니다.
 
 ## 주요 기능
 
@@ -16,6 +16,7 @@ iOS와 Android를 모두 지원하고, 국내와 해외 지도를 모두 쓸 수
 - **핀 수정**: 제목, 메모, 위치를 고치고 사진을 더하거나 뺄 수 있습니다. 사진을 누르면 대표 사진(지도 핀에 보이는 사진)이 바뀝니다.
 - **앨범**: 핀을 앨범(예: "2026 제주 여행")에 넣을 수 있습니다. 지도 위쪽에서 앨범을 고르면 그 앨범의 핀만 보이고, 핀들을 촬영 순서대로 점선으로 이어 경로처럼 보여 줍니다. 앨범 버튼을 길게 누르면 이름을 바꾸거나 지울 수 있고, 앨범을 지워도 핀은 남습니다.
 - **백업과 복원**: 지도 위쪽의 "백업" 버튼에서 핀·사진·앨범을 백업 파일(.zip) 하나로 만들어 iCloud Drive, Google Drive 등에 보관할 수 있습니다. 새 폰에서 백업 파일을 고르면 이 폰에 없는 핀만 더해서 되살립니다.
+- **공유 앨범**: 지도 위쪽 "공유" 버튼에서 이메일로 받은 코드로 로그인하고, 공유 앨범을 만들어 초대 코드를 보내거나 받은 코드로 참여합니다. 앨범 주인은 이름을 바꾸고 멤버를 내보내거나 앨범을 지울 수 있습니다.
 - **내 위치에서 시작**: 위치 권한을 허용하면 현재 위치에서 지도가 열리고, 거절하면 서울에서 열립니다.
 
 ## 기술 스택
@@ -29,6 +30,7 @@ iOS와 Android를 모두 지원하고, 국내와 해외 지도를 모두 쓸 수
 | 저장 | expo-sqlite (핀·사진 정보), expo-file-system (사진 파일) |
 | 위치 | expo-location |
 | 백업 | fflate (zip 만들기·읽기), expo-sharing (공유 창) |
+| 공유 | Supabase (로그인, Postgres + RLS, 사진 저장소), @supabase/supabase-js |
 
 ## 시작하기
 
@@ -53,6 +55,20 @@ npx expo start
 
 컴퓨터와 휴대폰이 같은 Wi-Fi에 연결되어 있어야 합니다. 연결이 안 되면 `npx expo start --tunnel`로 실행해 보세요.
 
+### 공유 기능 설정 (Supabase)
+
+공유 앨범을 쓰려면 Supabase 프로젝트가 필요합니다. 설정하지 않아도 공유를 뺀 나머지 기능은 그대로 동작합니다.
+
+1. 프로젝트 루트에 `.env.local`을 만들고 Supabase의 Project URL과 **publishable 키**를 넣습니다. 이 파일은 git에 올라가지 않습니다. `secret`·`service_role` 키는 절대 넣지 마세요.
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=https://<프로젝트>.supabase.co
+   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   ```
+2. Supabase 대시보드의 **SQL Editor**에서 `supabase/migrations/` 안의 SQL을 실행합니다. 여러 번 실행해도 안전합니다.
+3. **Authentication → Emails**의 **Magic Link**와 **Confirm signup** 템플릿에 `{{ .Token }}`을 넣습니다. 로그인 메일에 코드가 담기게 하기 위해서입니다.
+
+Supabase의 기본 메일 발송은 시간당 2통으로 제한됩니다. 로그인은 한 번 하면 유지됩니다.
+
 ### 개발 명령어
 
 | 명령어 | 설명 |
@@ -71,6 +87,9 @@ src/
 │   ├── _layout.tsx       # 공통 레이아웃: DB 연결, 화면 스택
 │   ├── index.tsx         # 지도 화면 (앨범 걸러 보기, 경로 선)
 │   ├── backup.tsx        # 백업과 복원 화면 (모달)
+│   ├── share/
+│   │   ├── index.tsx     # 공유 화면: 로그인, 닉네임, 내 공유 앨범, 만들기·참여
+│   │   └── [id].tsx      # 공유 앨범 화면: 초대 코드, 멤버, 이름 바꾸기, 나가기·지우기
 │   ├── album/
 │   │   └── [id].tsx      # 앨범 편집 화면 (모달)
 │   └── pin/
@@ -90,13 +109,20 @@ src/
 │   └── pins.ts           # 핀·사진 조회, 추가, 수정, 삭제 쿼리
 └── lib/
     ├── albumActions.ts   # 앨범 만들기·이름 바꾸기·지우기 (이름 검사 포함)
+    ├── auth.tsx          # 로그인 상태 (이메일 코드 로그인, 닉네임)
     ├── backup.ts         # 백업 파일 만들기·공유·복원 (파일과 DB 처리)
     ├── backupArchive.ts  # 백업 zip 쓰기·읽기, 목록 검사, 가져올 것 정하기 (Expo 비의존)
     ├── exif.ts           # 사진 EXIF에서 GPS와 촬영 시각 읽기
     ├── photoStorage.ts   # 사진 파일 복사와 삭제
     ├── pinActions.ts     # 핀 저장·수정·삭제 (사진 파일과 DB를 함께 처리)
+    ├── shareErrors.ts    # 서버 오류를 한국어 문장으로
+    ├── sharedAlbums.ts   # 공유 앨범 만들기·참여·이름 변경·멤버·삭제 (서버)
+    ├── supabase.ts       # Supabase 클라이언트
     ├── format.ts         # 날짜와 좌표 표시 형식
     └── types.ts          # 공통 타입
+
+supabase/
+└── migrations/           # 서버 스키마 SQL (테이블, RLS 정책, 사진 저장소)
 ```
 
 ## 데이터 저장 방식

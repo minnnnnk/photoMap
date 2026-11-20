@@ -188,6 +188,14 @@ export default function MapScreen() {
           </View>
           <Pressable
             style={styles.headerButton}
+            onPress={() => router.push('/share')}
+            hitSlop={8}
+            accessibilityLabel="공유"
+          >
+            <Text style={styles.headerButtonText}>공유</Text>
+          </Pressable>
+          <Pressable
+            style={styles.headerButton}
             onPress={() => router.push('/backup')}
             hitSlop={8}
             accessibilityLabel="백업과 복원"
@@ -267,7 +275,7 @@ const styles = StyleSheet.create({
     pointerEvents: 'none',
   },
   headerButton: {
-    marginLeft: 10,
+    marginLeft: 8,
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 10,
