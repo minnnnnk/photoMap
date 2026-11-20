@@ -13,6 +13,7 @@ export type StoredFormPhoto = {
   width: number | null;
   height: number | null;
   takenAt: string | null;
+  gps: Coord | null;
 };
 
 /** 방금 앨범에서 고른, 아직 저장하지 않은 사진 */
@@ -53,6 +54,7 @@ export function toFormValues({ pin, photos }: PinDetail): PinFormValues {
       width: p.width,
       height: p.height,
       takenAt: p.takenAt,
+      gps: p.gps,
     })),
   };
 }
@@ -77,6 +79,7 @@ async function importNewPhotos(photos: FormPhoto[], copied: string[]) {
       width: photo.width,
       height: photo.height,
       takenAt: photo.takenAt,
+      gps: photo.gps,
       sortOrder: index,
     });
   }
