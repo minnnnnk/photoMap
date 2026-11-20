@@ -182,8 +182,18 @@ export default function MapScreen() {
 
       <View style={[styles.topArea, { top: insets.top + 8 }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>내 사진 지도</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>내 사진 지도</Text>
+            <Text style={styles.subtitle}>{subtitle}</Text>
+          </View>
+          <Pressable
+            style={styles.headerButton}
+            onPress={() => router.push('/backup')}
+            hitSlop={8}
+            accessibilityLabel="백업과 복원"
+          >
+            <Text style={styles.headerButtonText}>백업</Text>
+          </Pressable>
         </View>
 
         {albums.length > 0 && (
@@ -237,17 +247,36 @@ const styles = StyleSheet.create({
     pointerEvents: 'box-none',
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginHorizontal: 16,
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 14,
     backgroundColor: 'rgba(255,255,255,0.95)',
-    pointerEvents: 'none',
+    // 헤더 바탕은 지도 터치를 통과시키고, 안의 버튼만 눌리게 한다.
+    pointerEvents: 'box-none',
     elevation: 3,
     shadowColor: '#000',
     shadowOpacity: 0.12,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
+  },
+  headerText: {
+    flex: 1,
+    pointerEvents: 'none',
+  },
+  headerButton: {
+    marginLeft: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: '#e8efff',
+  },
+  headerButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2f6bff',
   },
   albumBar: {
     marginTop: 8,
