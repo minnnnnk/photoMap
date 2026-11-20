@@ -34,8 +34,8 @@ export default function NewPinScreen() {
       submitLabel="지도에 저장"
       onSubmit={async (values) => {
         await createPin(db, values);
-        router.back();
       }}
+      onSaved={() => router.back()}
     />
   );
 }
