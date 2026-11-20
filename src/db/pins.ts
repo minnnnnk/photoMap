@@ -75,9 +75,40 @@ export async function getPin(db: SQLiteDatabase, id: string): Promise<PinDetail 
   return { pin: toPin(pinRow), photos: photoRows.map(toPhoto) };
 }
 
-export type NewPinRecord = Omit<Pin, 'createdAt' | 'updatedAt'> & {
-  photos: Omit<Photo, 'pinId' | 'createdAt'>[];
+type PinFields = Omit<Pin, 'createdAt' | 'updatedAt'>;
+export type NewPhotoRecord = Omit<Photo, 'pinId' | 'createdAt'>;
+
+export type NewPinRecord = PinFields & {
+  photos: NewPhotoRecord[];
 };
+
+export type PinUpdateRecord = PinFields & {
+  /** 남길 기존 사진과 새 순서. 여기 없는 기존 사진은 지워진다. */
+  keptPhotos: { id: string; sortOrder: number }[];
+  newPhotos: NewPhotoRecord[];
+};
+
+async function insertPhotoRows(
+  db: SQLiteDatabase,
+  pinId: string,
+  photos: NewPhotoRecord[],
+  now: string,
+): Promise<void> {
+  for (const p of photos) {
+    await db.runAsync(
+      `INSERT INTO photos (id, pin_id, file_name, width, height, taken_at, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      p.id,
+      pinId,
+      p.fileName,
+      p.width,
+      p.height,
+      p.takenAt,
+      p.sortOrder,
+      now,
+    );
+  }
+}
 
 export async function insertPin(db: SQLiteDatabase, record: NewPinRecord): Promise<void> {
   const now = new Date().toISOString();
@@ -93,21 +124,55 @@ export async function insertPin(db: SQLiteDatabase, record: NewPinRecord): Promi
       now,
       now,
     );
-    for (const p of record.photos) {
+    await insertPhotoRows(db, record.id, record.photos, now);
+  });
+}
+
+/**
+ * 핀 내용과 사진 목록을 고친다. 빠진 기존 사진의 행은 지우고 그 파일 이름을 돌려준다
+ * (파일 정리는 DB 반영이 끝난 뒤 호출한 쪽에서).
+ */
+export async function updatePinRows(db: SQLiteDatabase, record: PinUpdateRecord): Promise<string[]> {
+  const now = new Date().toISOString();
+  let removedFileNames: string[] = [];
+
+  await db.withTransactionAsync(async () => {
+    const result = await db.runAsync(
+      `UPDATE pins SET title = ?, memo = ?, latitude = ?, longitude = ?, updated_at = ?
+       WHERE id = ?`,
+      record.title,
+      record.memo,
+      record.latitude,
+      record.longitude,
+      now,
+      record.id,
+    );
+    if (result.changes === 0) throw new Error('수정할 핀을 찾을 수 없어요');
+
+    const existing = await db.getAllAsync<{ id: string; file_name: string }>(
+      'SELECT id, file_name FROM photos WHERE pin_id = ?',
+      record.id,
+    );
+    const keepIds = new Set(record.keptPhotos.map((p) => p.id));
+    const removed = existing.filter((p) => !keepIds.has(p.id));
+
+    for (const p of removed) {
+      await db.runAsync('DELETE FROM photos WHERE id = ?', p.id);
+    }
+    for (const p of record.keptPhotos) {
       await db.runAsync(
-        `INSERT INTO photos (id, pin_id, file_name, width, height, taken_at, sort_order, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        'UPDATE photos SET sort_order = ? WHERE id = ? AND pin_id = ?',
+        p.sortOrder,
         p.id,
         record.id,
-        p.fileName,
-        p.width,
-        p.height,
-        p.takenAt,
-        p.sortOrder,
-        now,
       );
     }
+    await insertPhotoRows(db, record.id, record.newPhotos, now);
+
+    removedFileNames = removed.map((p) => p.file_name);
   });
+
+  return removedFileNames;
 }
 
 /** 핀과 사진 행을 지우고, 지워진 사진 파일 이름을 돌려준다 (파일 정리는 호출한 쪽에서). */

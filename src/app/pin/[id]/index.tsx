@@ -1,6 +1,6 @@
-import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,18 +29,25 @@ export default function PinDetailScreen() {
   const [detail, setDetail] = useState<PinDetail | null | undefined>(undefined);
   const [page, setPage] = useState(0);
 
-  useEffect(() => {
-    let active = true;
-    getPin(db, id)
-      .then((d) => active && setDetail(d))
-      .catch((e) => {
-        console.warn('핀 불러오기 실패', e);
-        if (active) setDetail(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [db, id]);
+  // 수정 화면에서 돌아올 때도 새로 읽도록 화면에 들어올 때마다 불러온다.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getPin(db, id)
+        .then((d) => {
+          if (!active) return;
+          setDetail(d);
+          setPage(0);
+        })
+        .catch((e) => {
+          console.warn('핀 불러오기 실패', e);
+          if (active) setDetail(null);
+        });
+      return () => {
+        active = false;
+      };
+    }, [db, id]),
+  );
 
   if (detail === undefined) {
     return (
@@ -84,13 +91,27 @@ export default function PinDetailScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: pin.title || '제목 없음' }} />
+      <Stack.Screen
+        options={{
+          title: pin.title || '제목 없음',
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push(`/pin/${pin.id}/edit`)}
+              hitSlop={10}
+              accessibilityLabel="핀 수정"
+            >
+              <Text style={styles.headerButton}>수정</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <ScrollView
         style={styles.screen}
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
         <View>
           <ScrollView
+            key={pin.updatedAt}
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
@@ -142,6 +163,11 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  headerButton: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2f6bff',
   },
   center: {
     flex: 1,

@@ -90,7 +90,12 @@ export default function MapScreen() {
         }}
       >
         {pins.map((pin) => (
-          <PhotoMarker key={pin.id} pin={pin} onPress={() => router.push(`/pin/${pin.id}`)} />
+          // 핀을 고치면 updatedAt이 바뀌어 마커를 새로 그린다 (대표 사진·사진 수 반영).
+          <PhotoMarker
+            key={`${pin.id}:${pin.updatedAt}`}
+            pin={pin}
+            onPress={() => router.push(`/pin/${pin.id}`)}
+          />
         ))}
       </MapView>
 

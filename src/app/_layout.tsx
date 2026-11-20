@@ -11,7 +11,8 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerBackTitle: '지도' }}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="pin/new" options={{ title: '사진 추가', presentation: 'modal' }} />
-        <Stack.Screen name="pin/[id]" options={{ title: '' }} />
+        <Stack.Screen name="pin/[id]/index" options={{ title: '' }} />
+        <Stack.Screen name="pin/[id]/edit" options={{ title: '핀 수정', presentation: 'modal' }} />
       </Stack>
     </SQLiteProvider>
   );
