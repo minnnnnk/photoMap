@@ -30,13 +30,18 @@ export type NewFormPhoto = {
 
 export type FormPhoto = StoredFormPhoto | NewFormPhoto;
 
+/** 핀을 넣을 앨범: 이 기기의 앨범 또는 서버의 공유 앨범 */
+export type AlbumChoice = { kind: 'local' | 'shared'; id: string } | null;
+
 /** 핀 입력 양식의 값. photos의 순서가 곧 표시 순서이고, 첫 장이 대표 사진이다. */
 export type PinFormValues = Coord & {
   title: string;
   memo: string;
-  albumId: string | null;
+  album: AlbumChoice;
   photos: FormPhoto[];
 };
+
+const localAlbumId = (album: AlbumChoice) => (album?.kind === 'local' ? album.id : null);
 
 export function formPhotoUri(photo: FormPhoto): string {
   return photo.kind === 'stored' ? photoUri(photo.fileName) : photo.sourceUri;
@@ -46,7 +51,7 @@ export function toFormValues({ pin, photos }: PinDetail): PinFormValues {
   return {
     title: pin.title,
     memo: pin.memo,
-    albumId: pin.albumId,
+    album: pin.albumId ? { kind: 'local', id: pin.albumId } : null,
     latitude: pin.latitude,
     longitude: pin.longitude,
     photos: photos.map((p) => ({
@@ -100,7 +105,7 @@ export async function createPin(db: SQLiteDatabase, values: PinFormValues): Prom
       memo: values.memo,
       latitude: values.latitude,
       longitude: values.longitude,
-      albumId: values.albumId,
+      albumId: localAlbumId(values.album),
       photos: added,
     });
     return id;
@@ -125,7 +130,7 @@ export async function editPin(db: SQLiteDatabase, id: string, values: PinFormVal
       memo: values.memo,
       latitude: values.latitude,
       longitude: values.longitude,
-      albumId: values.albumId,
+      albumId: localAlbumId(values.album),
       keptPhotos: kept,
       newPhotos: added,
     });

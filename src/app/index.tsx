@@ -15,7 +15,12 @@ import { Chip } from '@/components/Chip';
 import { PhotoMarker } from '@/components/PhotoMarker';
 import { listAlbums } from '@/db/albums';
 import { listPins } from '@/db/pins';
-import type { AlbumSummary, PinSummary } from '@/lib/types';
+import { useAuth } from '@/lib/auth';
+import { photoUri } from '@/lib/photoStorage';
+import { listSharedAlbums, type SharedAlbum } from '@/lib/sharedAlbums';
+import { getSignedUrls } from '@/lib/sharedPhotoUrls';
+import { listSharedPins } from '@/lib/sharedPins';
+import type { AlbumSummary } from '@/lib/types';
 
 const SEOUL: Region = {
   latitude: 37.5665,
@@ -24,40 +29,104 @@ const SEOUL: Region = {
   longitudeDelta: 0.08,
 };
 
-/** 앨범 경로를 잇는 순서: 가장 이른 촬영 시각, 없으면 저장한 시각 */
-const routeOrder = (pin: PinSummary) => pin.firstTakenAt ?? pin.createdAt;
+type AlbumKind = 'local' | 'shared';
+type AlbumKey = { kind: AlbumKind; id: string };
 
-const toLatLng = (pin: PinSummary): LatLng => ({ latitude: pin.latitude, longitude: pin.longitude });
+/** 지도에 그리는 핀. 내 핀(이 기기)과 공유 핀(서버)을 같은 모양으로 다룬다. */
+type MapPin = LatLng & {
+  kind: AlbumKind;
+  id: string;
+  albumId: string | null;
+  coverUri: string | null;
+  photoCount: number;
+  /** 앨범 경로를 잇는 순서: 가장 이른 촬영 시각, 없으면 저장한 시각 */
+  order: string;
+  updatedAt: string;
+};
+
+const toLatLng = (p: LatLng): LatLng => ({ latitude: p.latitude, longitude: p.longitude });
+const inAlbum = (pin: MapPin, album: AlbumKey) => pin.kind === album.kind && pin.albumId === album.id;
+const sameAlbum = (a: AlbumKey | null, kind: AlbumKind, id: string) => a?.kind === kind && a.id === id;
+
+/** 공유 앨범과 공유 핀을 읽고, 대표 사진의 서명 URL까지 받아 온다. */
+async function loadShared(): Promise<{ albums: SharedAlbum[]; pins: MapPin[] }> {
+  const [albums, pins] = await Promise.all([listSharedAlbums(), listSharedPins()]);
+  const urls = await getSignedUrls(pins.flatMap((p) => (p.coverPath ? [p.coverPath] : [])));
+  return {
+    albums,
+    pins: pins.map((p) => ({
+      kind: 'shared',
+      id: p.id,
+      albumId: p.albumId,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      coverUri: p.coverPath ? (urls.get(p.coverPath) ?? null) : null,
+      photoCount: p.photoCount,
+      order: p.firstTakenAt ?? p.createdAt,
+      updatedAt: p.updatedAt,
+    })),
+  };
+}
 
 export default function MapScreen() {
   const db = useSQLiteContext();
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const centerRef = useRef<Region>(SEOUL);
-  const [pins, setPins] = useState<PinSummary[]>([]);
+  const [localPins, setLocalPins] = useState<MapPin[]>([]);
+  const [sharedPins, setSharedPins] = useState<MapPin[]>([]);
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
-  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
+  const [sharedAlbums, setSharedAlbums] = useState<SharedAlbum[]>([]);
+  const [selected, setSelected] = useState<AlbumKey | null>(null);
   const [canShowMe, setCanShowMe] = useState(false);
 
-  // 이 화면으로 돌아올 때마다(추가·수정·삭제 후) 핀과 앨범을 다시 읽는다.
+  // 이 화면으로 돌아올 때마다(추가·수정·삭제·로그인 후) 핀과 앨범을 다시 읽는다.
   useFocusEffect(
     useCallback(() => {
       let active = true;
+
       Promise.all([listPins(db), listAlbums(db)])
         .then(([pinRows, albumRows]) => {
           if (!active) return;
-          setPins(pinRows);
+          setLocalPins(
+            pinRows.map((p) => ({
+              kind: 'local',
+              id: p.id,
+              albumId: p.albumId,
+              latitude: p.latitude,
+              longitude: p.longitude,
+              coverUri: p.coverFileName ? photoUri(p.coverFileName) : null,
+              photoCount: p.photoCount,
+              order: p.firstTakenAt ?? p.createdAt,
+              updatedAt: p.updatedAt,
+            })),
+          );
           setAlbums(albumRows);
           // 보고 있던 앨범이 지워졌으면 전체 보기로 돌아간다.
-          setSelectedAlbumId((current) =>
-            current && albumRows.some((a) => a.id === current) ? current : null,
+          setSelected((cur) =>
+            cur?.kind === 'local' && !albumRows.some((a) => a.id === cur.id) ? null : cur,
           );
         })
         .catch((e) => console.warn('핀·앨범 불러오기 실패', e));
+
+      // 공유는 로그인했을 때만. 서버 오류가 나도 내 핀은 그대로 보인다.
+      (userId ? loadShared() : Promise.resolve({ albums: [], pins: [] }))
+        .then((shared) => {
+          if (!active) return;
+          setSharedAlbums(shared.albums);
+          setSharedPins(shared.pins);
+          setSelected((cur) =>
+            cur?.kind === 'shared' && !shared.albums.some((a) => a.id === cur.id) ? null : cur,
+          );
+        })
+        .catch((e) => console.warn('공유 앨범·핀 불러오기 실패', e));
+
       return () => {
         active = false;
       };
-    }, [db]),
+    }, [db, userId]),
   );
 
   // 처음 켤 때 위치 권한을 받으면 내 위치로 지도를 옮긴다. 거절하면 서울에서 시작.
@@ -81,23 +150,28 @@ export default function MapScreen() {
     })().catch((e) => console.warn('현재 위치 가져오기 실패', e));
   }, []);
 
-  const selectedAlbum = albums.find((a) => a.id === selectedAlbumId) ?? null;
+  const allPins = useMemo(() => [...localPins, ...sharedPins], [localPins, sharedPins]);
 
   const visiblePins = useMemo(
-    () => (selectedAlbumId ? pins.filter((p) => p.albumId === selectedAlbumId) : pins),
-    [pins, selectedAlbumId],
+    () => (selected ? allPins.filter((p) => inAlbum(p, selected)) : allPins),
+    [allPins, selected],
   );
 
   // 앨범을 고르면 그 핀들을 촬영 순서대로 잇는다.
   const route = useMemo(
     () =>
-      selectedAlbumId
-        ? [...visiblePins].sort((a, b) => routeOrder(a).localeCompare(routeOrder(b))).map(toLatLng)
-        : [],
-    [visiblePins, selectedAlbumId],
+      selected ? [...visiblePins].sort((a, b) => a.order.localeCompare(b.order)).map(toLatLng) : [],
+    [visiblePins, selected],
   );
 
-  const fitTo = (targets: PinSummary[]) => {
+  const selectedName =
+    selected?.kind === 'local'
+      ? albums.find((a) => a.id === selected.id)?.name
+      : selected?.kind === 'shared'
+        ? sharedAlbums.find((a) => a.id === selected.id)?.name
+        : undefined;
+
+  const fitTo = (targets: MapPin[]) => {
     if (targets.length === 0) return;
     if (targets.length === 1) {
       mapRef.current?.animateToRegion(
@@ -112,9 +186,9 @@ export default function MapScreen() {
     });
   };
 
-  const selectAlbum = (albumId: string | null) => {
-    setSelectedAlbumId(albumId);
-    fitTo(albumId ? pins.filter((p) => p.albumId === albumId) : pins);
+  const selectAlbum = (album: AlbumKey | null) => {
+    setSelected(album);
+    fitTo(album ? allPins.filter((p) => inAlbum(p, album)) : allPins);
   };
 
   const openNewPin = (latitude: number, longitude: number, source: 'map' | 'center') => {
@@ -124,7 +198,8 @@ export default function MapScreen() {
         lat: String(latitude),
         lng: String(longitude),
         source,
-        ...(selectedAlbumId ? { albumId: selectedAlbumId } : {}),
+        ...(selected?.kind === 'local' ? { albumId: selected.id } : {}),
+        ...(selected?.kind === 'shared' ? { sharedAlbumId: selected.id } : {}),
       },
     });
   };
@@ -140,10 +215,10 @@ export default function MapScreen() {
   };
 
   let subtitle: string;
-  if (selectedAlbum) {
-    subtitle = `${selectedAlbum.name} · 핀 ${visiblePins.length}개 · 앨범을 길게 누르면 편집`;
-  } else if (pins.length > 0) {
-    subtitle = `핀 ${pins.length}개 · 지도를 길게 누르면 그 자리에 추가`;
+  if (selectedName) {
+    subtitle = `${selectedName} · 핀 ${visiblePins.length}개 · 앨범을 길게 누르면 편집`;
+  } else if (allPins.length > 0) {
+    subtitle = `핀 ${allPins.length}개 · 지도를 길게 누르면 그 자리에 추가`;
   } else {
     subtitle = '+ 버튼이나 지도를 길게 눌러 첫 사진을 남겨 보세요';
   }
@@ -164,18 +239,23 @@ export default function MapScreen() {
         {route.length >= 2 && (
           <Polyline
             coordinates={route}
-            strokeColor="#2f6bff"
+            strokeColor={selected?.kind === 'shared' ? '#ff9f1a' : '#2f6bff'}
             strokeWidth={3}
             lineDashPattern={[10, 6]}
             geodesic
           />
         )}
         {visiblePins.map((pin) => (
-          // 핀을 고치면 updatedAt이 바뀌어 마커를 새로 그린다 (대표 사진·사진 수 반영).
+          // 핀을 고치면 updatedAt이, 대표 사진 주소가 바뀌면 coverUri가 달라져 마커를 새로 그린다.
           <PhotoMarker
-            key={`${pin.id}:${pin.updatedAt}`}
-            pin={pin}
-            onPress={() => router.push(`/pin/${pin.id}`)}
+            key={`${pin.kind}:${pin.id}:${pin.updatedAt}:${pin.coverUri ?? ''}`}
+            coordinate={toLatLng(pin)}
+            coverUri={pin.coverUri}
+            photoCount={pin.photoCount}
+            shared={pin.kind === 'shared'}
+            onPress={() =>
+              router.push(pin.kind === 'shared' ? `/shared-pin/${pin.id}` : `/pin/${pin.id}`)
+            }
           />
         ))}
       </MapView>
@@ -204,7 +284,7 @@ export default function MapScreen() {
           </Pressable>
         </View>
 
-        {albums.length > 0 && (
+        {(albums.length > 0 || sharedAlbums.length > 0) && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -212,16 +292,25 @@ export default function MapScreen() {
             contentContainerStyle={styles.albumBarContent}
           >
             <Chip
-              label={`전체 ${pins.length}`}
-              selected={selectedAlbumId === null}
+              label={`전체 ${allPins.length}`}
+              selected={selected === null}
               onPress={() => selectAlbum(null)}
             />
+            {sharedAlbums.map((a) => (
+              <Chip
+                key={`shared:${a.id}`}
+                label={`👥 ${a.name} ${sharedPins.filter((p) => p.albumId === a.id).length}`}
+                selected={sameAlbum(selected, 'shared', a.id)}
+                onPress={() => selectAlbum({ kind: 'shared', id: a.id })}
+                onLongPress={() => router.push(`/share/${a.id}`)}
+              />
+            ))}
             {albums.map((a) => (
               <Chip
                 key={a.id}
                 label={`${a.name} ${a.pinCount}`}
-                selected={selectedAlbumId === a.id}
-                onPress={() => selectAlbum(a.id)}
+                selected={sameAlbum(selected, 'local', a.id)}
+                onPress={() => selectAlbum({ kind: 'local', id: a.id })}
                 onLongPress={() => router.push(`/album/${a.id}`)}
               />
             ))}

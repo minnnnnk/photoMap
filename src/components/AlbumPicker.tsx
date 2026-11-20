@@ -4,18 +4,28 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 
 import { listAlbums } from '@/db/albums';
 import { createAlbum, MAX_ALBUM_NAME } from '@/lib/albumActions';
+import { useAuth } from '@/lib/auth';
+import type { AlbumChoice } from '@/lib/pinActions';
+import { listSharedAlbums, type SharedAlbum } from '@/lib/sharedAlbums';
 import type { AlbumSummary } from '@/lib/types';
 import { Chip } from './Chip';
 
 type Props = {
-  value: string | null;
-  onChange: (albumId: string | null) => void;
+  value: AlbumChoice;
+  onChange: (album: AlbumChoice) => void;
+  /** 로그인했을 때 공유 앨범도 고를 수 있게 한다 */
+  allowShared: boolean;
 };
 
-/** 핀을 넣을 앨범 고르기. 그 자리에서 새 앨범도 만들 수 있다. */
-export function AlbumPicker({ value, onChange }: Props) {
+const sameChoice = (a: AlbumChoice, kind: 'local' | 'shared', id: string) =>
+  a?.kind === kind && a.id === id;
+
+/** 핀을 넣을 앨범 고르기. 그 자리에서 새 앨범(이 기기)도 만들 수 있다. */
+export function AlbumPicker({ value, onChange, allowShared }: Props) {
   const db = useSQLiteContext();
+  const { session } = useAuth();
   const [albums, setAlbums] = useState<AlbumSummary[]>([]);
+  const [sharedAlbums, setSharedAlbums] = useState<SharedAlbum[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -30,6 +40,21 @@ export function AlbumPicker({ value, onChange }: Props) {
     };
   }, [db]);
 
+  const showShared = allowShared && session != null;
+  useEffect(() => {
+    if (!showShared) return;
+    let active = true;
+    listSharedAlbums()
+      .then((rows) => active && setSharedAlbums(rows))
+      .catch((e) => {
+        console.warn('공유 앨범 불러오기 실패', e);
+        if (active) setSharedAlbums([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showShared]);
+
   const closeAdding = () => {
     setAdding(false);
     setName('');
@@ -41,7 +66,7 @@ export function AlbumPicker({ value, onChange }: Props) {
     try {
       const album = await createAlbum(db, name);
       setAlbums((prev) => [{ ...album, pinCount: 0 }, ...prev]);
-      onChange(album.id);
+      onChange({ kind: 'local', id: album.id });
       closeAdding();
     } catch (e) {
       Alert.alert('앨범을 만들지 못했어요', e instanceof Error ? e.message : String(e));
@@ -49,6 +74,10 @@ export function AlbumPicker({ value, onChange }: Props) {
       setBusy(false);
     }
   };
+
+  // 지도에서 넘어온 공유 앨범이 아직 목록에 없으면(불러오는 중 등) 자리표시 칩으로 보여 준다.
+  const unknownShared =
+    value?.kind === 'shared' && !(sharedAlbums ?? []).some((a) => a.id === value.id);
 
   return (
     <View>
@@ -59,11 +88,32 @@ export function AlbumPicker({ value, onChange }: Props) {
         style={styles.row}
       >
         <Chip label="앨범 없음" selected={value === null} onPress={() => onChange(null)} />
+        {unknownShared && <Chip label="👥 공유 앨범" selected onPress={() => {}} />}
+        {showShared &&
+          (sharedAlbums ?? []).map((a) => (
+            <Chip
+              key={`shared:${a.id}`}
+              label={`👥 ${a.name}`}
+              selected={sameChoice(value, 'shared', a.id)}
+              onPress={() => onChange({ kind: 'shared', id: a.id })}
+            />
+          ))}
         {albums.map((a) => (
-          <Chip key={a.id} label={a.name} selected={value === a.id} onPress={() => onChange(a.id)} />
+          <Chip
+            key={a.id}
+            label={a.name}
+            selected={sameChoice(value, 'local', a.id)}
+            onPress={() => onChange({ kind: 'local', id: a.id })}
+          />
         ))}
         {!adding && <Chip label="+ 새 앨범" dashed onPress={() => setAdding(true)} />}
       </ScrollView>
+
+      {value?.kind === 'shared' && (
+        <Text style={styles.sharedHint}>
+          👥 공유 앨범에 저장하면 사진이 서버에 올라가 앨범 멤버들과 함께 봐요.
+        </Text>
+      )}
 
       {adding && (
         <View style={styles.addRow}>
@@ -97,6 +147,11 @@ export function AlbumPicker({ value, onChange }: Props) {
 const styles = StyleSheet.create({
   row: {
     flexGrow: 0,
+  },
+  sharedHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#b25e00',
   },
   addRow: {
     flexDirection: 'row',

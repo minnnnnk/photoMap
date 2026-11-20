@@ -17,10 +17,25 @@ export function ensurePhotoDir(): Directory {
   return dir;
 }
 
-function extensionOf(uri: string): string {
+export function extensionOf(uri: string): string {
   const match = uri.split('?')[0].match(/\.([a-zA-Z0-9]+)$/);
   const ext = match?.[1].toLowerCase();
   return ext && KNOWN_EXTENSIONS.includes(ext) ? ext : 'jpg';
+}
+
+const CONTENT_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  webp: 'image/webp',
+  gif: 'image/gif',
+};
+
+/** 파일 이름·경로의 확장자로 MIME 형식을 정한다 (모르면 JPEG). */
+export function contentTypeOf(path: string): string {
+  return CONTENT_TYPES[extensionOf(path)] ?? 'image/jpeg';
 }
 
 export function photoFile(fileName: string): File {
