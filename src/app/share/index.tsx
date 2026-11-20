@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MAX_ALBUM_NAME } from '@/lib/albumActions';
-import { MAX_NICKNAME, useAuth } from '@/lib/auth';
+import { MAX_NICKNAME, MIN_PASSWORD, useAuth } from '@/lib/auth';
 import { shareErrorMessage } from '@/lib/shareErrors';
 import {
   createSharedAlbum,
@@ -22,7 +22,6 @@ import {
   type SharedAlbum,
 } from '@/lib/sharedAlbums';
 
-const RESEND_SECONDS = 60;
 
 export default function ShareScreen() {
   const auth = useAuth();
@@ -38,7 +37,7 @@ export default function ShareScreen() {
   } else if (auth.loading) {
     body = <ActivityIndicator style={styles.spinner} />;
   } else if (!auth.session) {
-    body = <EmailLogin />;
+    body = <PasswordLogin />;
   } else if (!auth.profile) {
     body = <NicknameForm />;
   } else {
@@ -59,57 +58,39 @@ export default function ShareScreen() {
 
 // ---------------------------------------------------------------- 로그인
 
-function EmailLogin() {
-  const { sendCode, verifyCode } = useAuth();
+function PasswordLogin() {
+  const { signIn, signUp } = useAuth();
+  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
-  const [code, setCode] = useState('');
-  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-
-  useEffect(() => {
-    if (cooldown <= 0) return;
-    const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [cooldown]);
 
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const validPassword = password.length >= MIN_PASSWORD;
+  const canSubmit = validEmail && validPassword && !busy;
 
-  const onSend = async () => {
-    if (!validEmail || busy || cooldown > 0) return;
+  const onSubmit = async () => {
+    if (!canSubmit) return;
     setBusy(true);
     try {
-      await sendCode(email);
-      setStep('code');
-      setCooldown(RESEND_SECONDS);
-    } catch (e) {
-      Alert.alert('코드를 보내지 못했어요', shareErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onVerify = async () => {
-    if (code.trim().length < 6 || busy) return;
-    setBusy(true);
-    try {
-      await verifyCode(email, code);
+      if (mode === 'signIn') await signIn(email, password);
+      else await signUp(email, password);
       // 성공하면 AuthProvider가 로그인 상태를 바꾸고 화면이 다음 단계로 넘어간다.
     } catch (e) {
-      Alert.alert('로그인하지 못했어요', shareErrorMessage(e));
+      Alert.alert(mode === 'signIn' ? '로그인하지 못했어요' : '가입하지 못했어요', shareErrorMessage(e));
       setBusy(false);
     }
   };
 
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>로그인</Text>
+      <Text style={styles.cardTitle}>{mode === 'signIn' ? '로그인' : '가입하기'}</Text>
       <Text style={styles.cardBody}>
-        공유 앨범을 쓰려면 로그인이 필요해요. 이메일로 받은 코드를 넣으면 돼요. 비밀번호는 없어요.
+        공유 앨범을 쓰려면 계정이 필요해요. 폰을 바꿔도 같은 이메일과 비밀번호로 로그인하면 돼요.
       </Text>
 
       <TextInput
-        style={[styles.input, step === 'code' && styles.inputDone]}
+        style={styles.input}
         value={email}
         onChangeText={setEmail}
         placeholder="이메일 주소"
@@ -118,49 +99,43 @@ function EmailLogin() {
         autoCapitalize="none"
         autoCorrect={false}
         autoComplete="email"
-        editable={step === 'email'}
-        returnKeyType="send"
-        onSubmitEditing={onSend}
+        textContentType="emailAddress"
+        returnKeyType="next"
       />
-
-      {step === 'email' ? (
-        <PrimaryButton label="코드 받기" onPress={onSend} disabled={!validEmail} busy={busy} />
-      ) : (
-        <>
-          <TextInput
-            style={styles.input}
-            value={code}
-            onChangeText={(t) => setCode(t.replace(/\D/g, ''))}
-            placeholder="메일로 받은 코드"
-            placeholderTextColor="#9aa1ad"
-            keyboardType="number-pad"
-            autoComplete="one-time-code"
-            textContentType="oneTimeCode"
-            maxLength={10}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={onVerify}
-          />
-          <PrimaryButton label="로그인" onPress={onVerify} disabled={code.trim().length < 6} busy={busy} />
-          <View style={styles.row}>
-            <Pressable onPress={onSend} disabled={cooldown > 0 || busy} hitSlop={8}>
-              <Text style={[styles.link, cooldown > 0 && styles.linkDisabled]}>
-                {cooldown > 0 ? `코드 다시 받기 (${cooldown}초)` : '코드 다시 받기'}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                setStep('email');
-                setCode('');
-              }}
-              hitSlop={8}
-            >
-              <Text style={styles.link}>이메일 바꾸기</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.hint}>메일이 안 보이면 스팸함도 확인해 주세요.</Text>
-        </>
+      <TextInput
+        style={styles.input}
+        value={password}
+        onChangeText={setPassword}
+        placeholder={`비밀번호 (${MIN_PASSWORD}자 이상)`}
+        placeholderTextColor="#9aa1ad"
+        secureTextEntry
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'}
+        textContentType={mode === 'signIn' ? 'password' : 'newPassword'}
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
+      />
+      {mode === 'signUp' && password.length > 0 && !validPassword && (
+        <Text style={styles.hint}>비밀번호는 {MIN_PASSWORD}자 이상이어야 해요.</Text>
       )}
+
+      <PrimaryButton
+        label={mode === 'signIn' ? '로그인' : '가입하기'}
+        onPress={onSubmit}
+        disabled={!validEmail || !validPassword}
+        busy={busy}
+      />
+      <Pressable
+        onPress={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')}
+        hitSlop={8}
+        style={styles.centerLink}
+        disabled={busy}
+      >
+        <Text style={styles.link}>
+          {mode === 'signIn' ? '처음이에요 · 가입하기' : '이미 계정이 있어요 · 로그인'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -402,9 +377,7 @@ const styles = StyleSheet.create({
   buttonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   secondaryButtonText: { color: '#2f6bff' },
   buttonRow: { flexDirection: 'row', gap: 10 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   link: { fontSize: 14, fontWeight: '600', color: '#2f6bff' },
-  linkDisabled: { color: '#9aa1ad' },
   centerLink: { alignSelf: 'center', marginTop: 16 },
   hint: { marginTop: 4, fontSize: 12, color: '#7a8190' },
   muted: { fontSize: 14, lineHeight: 21, color: '#7a8190' },

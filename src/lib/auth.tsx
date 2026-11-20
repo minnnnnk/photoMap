@@ -16,8 +16,8 @@ type AuthContextValue = {
   session: Session | null;
   /** 닉네임을 아직 정하지 않았으면 null */
   profile: Profile | null;
-  sendCode: (email: string) => Promise<void>;
-  verifyCode: (email: string, code: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
   saveNickname: (nickname: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -25,6 +25,8 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const MAX_NICKNAME = 20;
+/** Supabase 기본 최소 비밀번호 길이 */
+export const MIN_PASSWORD = 6;
 
 async function fetchProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await requireSupabase()
@@ -82,21 +84,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const sendCode = useCallback(async (email: string) => {
-    const { error } = await requireSupabase().auth.signInWithOtp({
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { error } = await requireSupabase().auth.signInWithPassword({
       email: email.trim(),
-      options: { shouldCreateUser: true },
+      password,
     });
     if (error) throw error;
   }, []);
 
-  const verifyCode = useCallback(async (email: string, code: string) => {
-    const { error } = await requireSupabase().auth.verifyOtp({
+  // Supabase에서 이메일 확인(Confirm email)을 꺼 두어 메일 없이 바로 로그인된다.
+  const signUp = useCallback(async (email: string, password: string) => {
+    const { data, error } = await requireSupabase().auth.signUp({
       email: email.trim(),
-      token: code.trim(),
-      type: 'email',
+      password,
     });
     if (error) throw error;
+    if (!data.session) {
+      throw new Error('가입은 됐지만 이메일 확인이 필요하다고 나와요. Supabase에서 Confirm email 설정을 확인해 주세요.');
+    }
   }, []);
 
   const saveNickname = useCallback(
@@ -126,12 +131,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       session,
       profile,
-      sendCode,
-      verifyCode,
+      signIn,
+      signUp,
       saveNickname,
       signOut,
     }),
-    [loading, session, profile, sendCode, verifyCode, saveNickname, signOut],
+    [loading, session, profile, signIn, signUp, saveNickname, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
