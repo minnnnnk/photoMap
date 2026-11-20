@@ -7,8 +7,20 @@ export type Pin = Coord & {
   id: string;
   title: string;
   memo: string;
+  albumId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type Album = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AlbumSummary = Album & {
+  pinCount: number;
 };
 
 export type Photo = {
@@ -26,13 +38,15 @@ export type Photo = {
   createdAt: string;
 };
 
-/** 지도에 그릴 때 쓰는 핀 요약: 대표 사진과 사진 수 포함 */
+/** 지도에 그릴 때 쓰는 핀 요약: 대표 사진, 사진 수, 가장 이른 촬영 시각 포함 */
 export type PinSummary = Pin & {
   coverFileName: string | null;
   photoCount: number;
+  firstTakenAt: string | null;
 };
 
 export type PinDetail = {
   pin: Pin;
   photos: Photo[];
+  album: Album | null;
 };

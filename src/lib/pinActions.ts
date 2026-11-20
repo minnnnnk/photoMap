@@ -34,6 +34,7 @@ export type FormPhoto = StoredFormPhoto | NewFormPhoto;
 export type PinFormValues = Coord & {
   title: string;
   memo: string;
+  albumId: string | null;
   photos: FormPhoto[];
 };
 
@@ -45,6 +46,7 @@ export function toFormValues({ pin, photos }: PinDetail): PinFormValues {
   return {
     title: pin.title,
     memo: pin.memo,
+    albumId: pin.albumId,
     latitude: pin.latitude,
     longitude: pin.longitude,
     photos: photos.map((p) => ({
@@ -98,6 +100,7 @@ export async function createPin(db: SQLiteDatabase, values: PinFormValues): Prom
       memo: values.memo,
       latitude: values.latitude,
       longitude: values.longitude,
+      albumId: values.albumId,
       photos: added,
     });
     return id;
@@ -122,6 +125,7 @@ export async function editPin(db: SQLiteDatabase, id: string, values: PinFormVal
       memo: values.memo,
       latitude: values.latitude,
       longitude: values.longitude,
+      albumId: values.albumId,
       keptPhotos: kept,
       newPhotos: added,
     });

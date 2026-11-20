@@ -13,6 +13,7 @@ export default function RootLayout() {
         <Stack.Screen name="pin/new" options={{ title: '사진 추가', presentation: 'modal' }} />
         <Stack.Screen name="pin/[id]/index" options={{ title: '' }} />
         <Stack.Screen name="pin/[id]/edit" options={{ title: '핀 수정', presentation: 'modal' }} />
+        <Stack.Screen name="album/[id]" options={{ title: '앨범 편집', presentation: 'modal' }} />
       </Stack>
     </SQLiteProvider>
   );

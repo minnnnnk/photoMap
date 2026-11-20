@@ -17,13 +17,20 @@ function coordFromParams(lat?: string, lng?: string): Coord | null {
 
 export default function NewPinScreen() {
   const db = useSQLiteContext();
-  const params = useLocalSearchParams<{ lat?: string; lng?: string; source?: string }>();
+  const params = useLocalSearchParams<{
+    lat?: string;
+    lng?: string;
+    source?: string;
+    /** 지도에서 앨범을 고른 채로 추가하면 그 앨범에 넣는다 */
+    albumId?: string;
+  }>();
 
   // 처음 위치는 지도 화면에서 넘어온 값으로 한 번만 정한다.
   const [initialValues] = useState<PinFormValues>(() => ({
     ...(coordFromParams(params.lat, params.lng) ?? SEOUL),
     title: '',
     memo: '',
+    albumId: params.albumId || null,
     photos: [],
   }));
 

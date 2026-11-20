@@ -64,7 +64,7 @@ export default function PinDetailScreen() {
     );
   }
 
-  const { pin, photos } = detail;
+  const { pin, photos, album } = detail;
   const takenAt = photos.find((p) => p.takenAt)?.takenAt;
 
   const confirmDelete = () => {
@@ -143,6 +143,7 @@ export default function PinDetailScreen() {
             {takenAt ? `📷 ${formatTakenAt(takenAt)}` : `🗓️ ${formatDate(pin.createdAt)}에 저장`}
           </Text>
           <Text style={styles.meta}>📍 {formatCoord(pin.latitude, pin.longitude)}</Text>
+          {album && <Text style={styles.meta}>📁 {album.name}</Text>}
 
           {pin.memo ? (
             <Text style={styles.memo}>{pin.memo}</Text>

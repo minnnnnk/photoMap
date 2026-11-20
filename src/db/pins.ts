@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Photo, Pin, PinDetail, PinSummary } from '@/lib/types';
+import { getAlbum } from './albums';
 
 type PinRow = {
   id: string;
@@ -8,6 +9,7 @@ type PinRow = {
   memo: string;
   latitude: number;
   longitude: number;
+  album_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -15,6 +17,7 @@ type PinRow = {
 type PinSummaryRow = PinRow & {
   cover_file_name: string | null;
   photo_count: number;
+  first_taken_at: string | null;
 };
 
 type PhotoRow = {
@@ -36,6 +39,7 @@ const toPin = (r: PinRow): Pin => ({
   memo: r.memo,
   latitude: r.latitude,
   longitude: r.longitude,
+  albumId: r.album_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -57,7 +61,8 @@ export async function listPins(db: SQLiteDatabase): Promise<PinSummary[]> {
     SELECT p.*,
       (SELECT ph.file_name FROM photos ph
          WHERE ph.pin_id = p.id ORDER BY ph.sort_order LIMIT 1) AS cover_file_name,
-      (SELECT COUNT(*) FROM photos ph WHERE ph.pin_id = p.id) AS photo_count
+      (SELECT COUNT(*) FROM photos ph WHERE ph.pin_id = p.id) AS photo_count,
+      (SELECT MIN(ph.taken_at) FROM photos ph WHERE ph.pin_id = p.id) AS first_taken_at
     FROM pins p
     ORDER BY p.created_at DESC
   `);
@@ -65,6 +70,7 @@ export async function listPins(db: SQLiteDatabase): Promise<PinSummary[]> {
     ...toPin(r),
     coverFileName: r.cover_file_name,
     photoCount: r.photo_count,
+    firstTakenAt: r.first_taken_at,
   }));
 }
 
@@ -75,7 +81,8 @@ export async function getPin(db: SQLiteDatabase, id: string): Promise<PinDetail 
     'SELECT * FROM photos WHERE pin_id = ? ORDER BY sort_order',
     id,
   );
-  return { pin: toPin(pinRow), photos: photoRows.map(toPhoto) };
+  const album = pinRow.album_id ? await getAlbum(db, pinRow.album_id) : null;
+  return { pin: toPin(pinRow), photos: photoRows.map(toPhoto), album };
 }
 
 type PinFields = Omit<Pin, 'createdAt' | 'updatedAt'>;
@@ -120,13 +127,14 @@ export async function insertPin(db: SQLiteDatabase, record: NewPinRecord): Promi
   const now = new Date().toISOString();
   await db.withTransactionAsync(async () => {
     await db.runAsync(
-      `INSERT INTO pins (id, title, memo, latitude, longitude, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO pins (id, title, memo, latitude, longitude, album_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       record.id,
       record.title,
       record.memo,
       record.latitude,
       record.longitude,
+      record.albumId,
       now,
       now,
     );
@@ -144,12 +152,13 @@ export async function updatePinRows(db: SQLiteDatabase, record: PinUpdateRecord)
 
   await db.withTransactionAsync(async () => {
     const result = await db.runAsync(
-      `UPDATE pins SET title = ?, memo = ?, latitude = ?, longitude = ?, updated_at = ?
+      `UPDATE pins SET title = ?, memo = ?, latitude = ?, longitude = ?, album_id = ?, updated_at = ?
        WHERE id = ?`,
       record.title,
       record.memo,
       record.latitude,
       record.longitude,
+      record.albumId,
       now,
       record.id,
     );

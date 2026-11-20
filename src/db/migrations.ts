@@ -1,6 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-const DATABASE_VERSION = 2;
+const DATABASE_VERSION = 3;
 
 /**
  * 앱이 켜질 때마다 SQLiteProvider의 onInit에서 실행된다.
@@ -58,6 +58,22 @@ export async function migrateDb(db: SQLiteDatabase): Promise<void> {
         ALTER TABLE photos ADD COLUMN longitude REAL;
       `);
       version = 2;
+    }
+
+    // 3: 앨범. 핀 하나는 앨범 하나에 들어가고, 앨범을 지우면 핀은 남고 앨범에서만 빠진다.
+    if (version === 2) {
+      await db.execAsync(`
+        CREATE TABLE albums (
+          id          TEXT PRIMARY KEY NOT NULL,
+          name        TEXT NOT NULL,
+          created_at  TEXT NOT NULL,
+          updated_at  TEXT NOT NULL
+        );
+
+        ALTER TABLE pins ADD COLUMN album_id TEXT REFERENCES albums(id) ON DELETE SET NULL;
+        CREATE INDEX idx_pins_album ON pins(album_id);
+      `);
+      version = 3;
     }
 
     await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);

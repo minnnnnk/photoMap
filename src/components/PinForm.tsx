@@ -16,6 +16,7 @@ import {
 import MapView, { Marker, type MapPressEvent } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AlbumPicker } from '@/components/AlbumPicker';
 import { gpsFromExif, takenAtFromExif } from '@/lib/exif';
 import { formatCoord } from '@/lib/format';
 import {
@@ -65,6 +66,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
   const [photos, setPhotos] = useState<FormPhoto[]>(initialValues.photos);
   const [title, setTitle] = useState(initialValues.title);
   const [memo, setMemo] = useState(initialValues.memo);
+  const [albumId, setAlbumId] = useState<string | null>(initialValues.albumId);
   const [saving, setSaving] = useState(false);
   // 저장했거나 "나가기"를 고른 뒤에는 더 묻지 않는다.
   const [leaving, setLeaving] = useState(false);
@@ -72,6 +74,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
   const isDirty =
     title !== initial.title ||
     memo !== initial.memo ||
+    albumId !== initial.albumId ||
     coord.latitude !== initialCoord.latitude ||
     coord.longitude !== initialCoord.longitude ||
     photos.length !== initial.photos.length ||
@@ -161,6 +164,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
       await onSubmit({
         title: title.trim(),
         memo: memo.trim(),
+        albumId,
         latitude: coord.latitude,
         longitude: coord.longitude,
         photos,
@@ -267,6 +271,9 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
         maxLength={80}
         returnKeyType="next"
       />
+
+      <Text style={styles.label}>앨범</Text>
+      <AlbumPicker value={albumId} onChange={setAlbumId} />
 
       <Text style={styles.label}>메모</Text>
       <TextInput
