@@ -1,0 +1,37 @@
+# PR과 develop 푸시마다 타입 검사와 린트를 돌린다.
+# develop 브랜치 보호 규칙이 이 "check" 작업의 통과를 요구하고, 통과하면 PR이 자동 머지된다.
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 타입 검사
+        run: npm run typecheck
+
+      - name: 린트
+        run: npm run lint
