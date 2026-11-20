@@ -24,6 +24,8 @@ type PhotoRow = {
   width: number | null;
   height: number | null;
   taken_at: string | null;
+  latitude: number | null;
+  longitude: number | null;
   sort_order: number;
   created_at: string;
 };
@@ -45,6 +47,7 @@ const toPhoto = (r: PhotoRow): Photo => ({
   width: r.width,
   height: r.height,
   takenAt: r.taken_at,
+  gps: r.latitude != null && r.longitude != null ? { latitude: r.latitude, longitude: r.longitude } : null,
   sortOrder: r.sort_order,
   createdAt: r.created_at,
 });
@@ -96,14 +99,17 @@ async function insertPhotoRows(
 ): Promise<void> {
   for (const p of photos) {
     await db.runAsync(
-      `INSERT INTO photos (id, pin_id, file_name, width, height, taken_at, sort_order, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO photos
+         (id, pin_id, file_name, width, height, taken_at, latitude, longitude, sort_order, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       p.id,
       pinId,
       p.fileName,
       p.width,
       p.height,
       p.takenAt,
+      p.gps?.latitude ?? null,
+      p.gps?.longitude ?? null,
       p.sortOrder,
       now,
     );

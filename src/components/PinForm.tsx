@@ -92,11 +92,11 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
     ]);
   });
 
-  // 위치 정보는 새로 고른 사진에만 있다 (저장된 사진은 GPS를 따로 보관하지 않음).
-  const photoGps =
-    photos.find((p): p is NewFormPhoto & { gps: Coord } => p.kind === 'new' && p.gps != null)
-      ?.gps ?? null;
-  const canUsePhotoGps = photoGps != null && source !== 'photo';
+  // 위치가 있는 첫 사진(대표 사진 우선)의 위치. 저장된 사진도 DB 버전 2부터 위치를 갖는다.
+  const photoGps = photos.find((p) => p.gps)?.gps ?? null;
+  const canUsePhotoGps =
+    photoGps != null &&
+    (photoGps.latitude !== coord.latitude || photoGps.longitude !== coord.longitude);
   const hasNewPhotos = photos.some((p) => p.kind === 'new');
 
   const moveTo = (next: Coord, nextSource: LocationSource) => {
@@ -210,7 +210,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
                     <Text style={styles.coverBadgeText}>대표</Text>
                   </View>
                 )}
-                {p.kind === 'new' && p.gps && <Text style={styles.thumbGps}>📍</Text>}
+                {p.gps && <Text style={styles.thumbGps}>📍</Text>}
                 <Pressable
                   style={styles.thumbRemove}
                   onPress={() => removePhoto(p.id)}

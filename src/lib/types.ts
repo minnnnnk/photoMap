@@ -20,6 +20,8 @@ export type Photo = {
   height: number | null;
   /** 사진 EXIF의 촬영 시각 (YYYY-MM-DDTHH:MM:SS, 찍은 곳의 현지 시각) */
   takenAt: string | null;
+  /** 사진 EXIF의 위치. 위치 정보가 없거나 DB 버전 2 이전에 저장한 사진은 null */
+  gps: Coord | null;
   sortOrder: number;
   createdAt: string;
 };
