@@ -1,14 +1,21 @@
 import * as Location from 'expo-location';
 import { router, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import MapView, { type LongPressEvent, type Region } from 'react-native-maps';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, {
+  Polyline,
+  type LatLng,
+  type LongPressEvent,
+  type Region,
+} from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Chip } from '@/components/Chip';
 import { PhotoMarker } from '@/components/PhotoMarker';
+import { listAlbums } from '@/db/albums';
 import { listPins } from '@/db/pins';
-import type { PinSummary } from '@/lib/types';
+import type { AlbumSummary, PinSummary } from '@/lib/types';
 
 const SEOUL: Region = {
   latitude: 37.5665,
@@ -17,21 +24,36 @@ const SEOUL: Region = {
   longitudeDelta: 0.08,
 };
 
+/** 앨범 경로를 잇는 순서: 가장 이른 촬영 시각, 없으면 저장한 시각 */
+const routeOrder = (pin: PinSummary) => pin.firstTakenAt ?? pin.createdAt;
+
+const toLatLng = (pin: PinSummary): LatLng => ({ latitude: pin.latitude, longitude: pin.longitude });
+
 export default function MapScreen() {
   const db = useSQLiteContext();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
   const centerRef = useRef<Region>(SEOUL);
   const [pins, setPins] = useState<PinSummary[]>([]);
+  const [albums, setAlbums] = useState<AlbumSummary[]>([]);
+  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);
   const [canShowMe, setCanShowMe] = useState(false);
 
-  // 이 화면으로 돌아올 때마다(추가·삭제 후) 핀 목록을 다시 읽는다.
+  // 이 화면으로 돌아올 때마다(추가·수정·삭제 후) 핀과 앨범을 다시 읽는다.
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      listPins(db)
-        .then((rows) => active && setPins(rows))
-        .catch((e) => console.warn('핀 목록 불러오기 실패', e));
+      Promise.all([listPins(db), listAlbums(db)])
+        .then(([pinRows, albumRows]) => {
+          if (!active) return;
+          setPins(pinRows);
+          setAlbums(albumRows);
+          // 보고 있던 앨범이 지워졌으면 전체 보기로 돌아간다.
+          setSelectedAlbumId((current) =>
+            current && albumRows.some((a) => a.id === current) ? current : null,
+          );
+        })
+        .catch((e) => console.warn('핀·앨범 불러오기 실패', e));
       return () => {
         active = false;
       };
@@ -59,10 +81,51 @@ export default function MapScreen() {
     })().catch((e) => console.warn('현재 위치 가져오기 실패', e));
   }, []);
 
+  const selectedAlbum = albums.find((a) => a.id === selectedAlbumId) ?? null;
+
+  const visiblePins = useMemo(
+    () => (selectedAlbumId ? pins.filter((p) => p.albumId === selectedAlbumId) : pins),
+    [pins, selectedAlbumId],
+  );
+
+  // 앨범을 고르면 그 핀들을 촬영 순서대로 잇는다.
+  const route = useMemo(
+    () =>
+      selectedAlbumId
+        ? [...visiblePins].sort((a, b) => routeOrder(a).localeCompare(routeOrder(b))).map(toLatLng)
+        : [],
+    [visiblePins, selectedAlbumId],
+  );
+
+  const fitTo = (targets: PinSummary[]) => {
+    if (targets.length === 0) return;
+    if (targets.length === 1) {
+      mapRef.current?.animateToRegion(
+        { ...toLatLng(targets[0]), latitudeDelta: 0.02, longitudeDelta: 0.02 },
+        500,
+      );
+      return;
+    }
+    mapRef.current?.fitToCoordinates(targets.map(toLatLng), {
+      edgePadding: { top: insets.top + 150, right: 60, bottom: insets.bottom + 110, left: 60 },
+      animated: true,
+    });
+  };
+
+  const selectAlbum = (albumId: string | null) => {
+    setSelectedAlbumId(albumId);
+    fitTo(albumId ? pins.filter((p) => p.albumId === albumId) : pins);
+  };
+
   const openNewPin = (latitude: number, longitude: number, source: 'map' | 'center') => {
     router.push({
       pathname: '/pin/new',
-      params: { lat: String(latitude), lng: String(longitude), source },
+      params: {
+        lat: String(latitude),
+        lng: String(longitude),
+        source,
+        ...(selectedAlbumId ? { albumId: selectedAlbumId } : {}),
+      },
     });
   };
 
@@ -75,6 +138,15 @@ export default function MapScreen() {
     const { latitude, longitude } = centerRef.current;
     openNewPin(latitude, longitude, 'center');
   };
+
+  let subtitle: string;
+  if (selectedAlbum) {
+    subtitle = `${selectedAlbum.name} · 핀 ${visiblePins.length}개 · 앨범을 길게 누르면 편집`;
+  } else if (pins.length > 0) {
+    subtitle = `핀 ${pins.length}개 · 지도를 길게 누르면 그 자리에 추가`;
+  } else {
+    subtitle = '+ 버튼이나 지도를 길게 눌러 첫 사진을 남겨 보세요';
+  }
 
   return (
     <View style={styles.container}>
@@ -89,7 +161,16 @@ export default function MapScreen() {
           centerRef.current = region;
         }}
       >
-        {pins.map((pin) => (
+        {route.length >= 2 && (
+          <Polyline
+            coordinates={route}
+            strokeColor="#2f6bff"
+            strokeWidth={3}
+            lineDashPattern={[10, 6]}
+            geodesic
+          />
+        )}
+        {visiblePins.map((pin) => (
           // 핀을 고치면 updatedAt이 바뀌어 마커를 새로 그린다 (대표 사진·사진 수 반영).
           <PhotoMarker
             key={`${pin.id}:${pin.updatedAt}`}
@@ -99,13 +180,35 @@ export default function MapScreen() {
         ))}
       </MapView>
 
-      <View style={[styles.header, { top: insets.top + 8 }]}>
-        <Text style={styles.title}>내 사진 지도</Text>
-        <Text style={styles.subtitle}>
-          {pins.length > 0
-            ? `핀 ${pins.length}개 · 지도를 길게 누르면 그 자리에 추가`
-            : '+ 버튼이나 지도를 길게 눌러 첫 사진을 남겨 보세요'}
-        </Text>
+      <View style={[styles.topArea, { top: insets.top + 8 }]}>
+        <View style={styles.header}>
+          <Text style={styles.title}>내 사진 지도</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        </View>
+
+        {albums.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.albumBar}
+            contentContainerStyle={styles.albumBarContent}
+          >
+            <Chip
+              label={`전체 ${pins.length}`}
+              selected={selectedAlbumId === null}
+              onPress={() => selectAlbum(null)}
+            />
+            {albums.map((a) => (
+              <Chip
+                key={a.id}
+                label={`${a.name} ${a.pinCount}`}
+                selected={selectedAlbumId === a.id}
+                onPress={() => selectAlbum(a.id)}
+                onLongPress={() => router.push(`/album/${a.id}`)}
+              />
+            ))}
+          </ScrollView>
+        )}
       </View>
 
       <Pressable
@@ -127,10 +230,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
+  topArea: {
     position: 'absolute',
-    left: 16,
-    right: 16,
+    left: 0,
+    right: 0,
+    pointerEvents: 'box-none',
+  },
+  header: {
+    marginHorizontal: 16,
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 14,
@@ -141,6 +248,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
+  },
+  albumBar: {
+    marginTop: 8,
+    flexGrow: 0,
+  },
+  albumBarContent: {
+    paddingHorizontal: 16,
   },
   title: {
     fontSize: 17,
