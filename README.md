@@ -39,7 +39,6 @@ iOS와 Android를 모두 지원하고, 국내와 해외 지도를 모두 쓸 수
 ```bash
 git clone git@github.com:minnnnnk/photoMap.git
 cd photoMap
-git switch develop
 npm install
 npx expo start
 ```
@@ -105,9 +104,17 @@ src/
 - **웹은 지원하지 않습니다**: react-native-maps가 웹을 지원하지 않기 때문입니다.
 - **직접 빌드할 때**: Expo Go에서는 지도 설정이 필요 없습니다. 하지만 앱을 직접 빌드할 때 Android에서 Google 지도를 쓰려면 Google Maps API 키가 필요하고, `react-native-maps` 설정 플러그인으로 넣습니다.
 
-## 브랜치
+## 작업 흐름
 
-모든 작업은 `develop` 브랜치에서 합니다.
+기본 브랜치는 `develop`이고, 모든 변경은 이슈와 PR을 거쳐 들어갑니다.
+
+1. 할 일을 **이슈**로 만듭니다.
+2. `develop`에서 브랜치를 땁니다. 이름은 `feat/<이슈 번호>-<짧은 이름>` 형식이고, 버그는 `fix/`, 문서는 `docs/`로 시작합니다.
+3. 작업을 커밋하고 푸시한 뒤 `develop`으로 **PR**을 엽니다. PR 본문에 `Closes #<이슈 번호>`를 넣으면 머지될 때 이슈가 함께 닫힙니다.
+4. PR에서 **자동 머지**를 켭니다 (`gh pr merge --auto --squash`).
+5. GitHub Actions의 CI(`check`: 타입 검사와 린트)가 통과하면 PR이 스쿼시 머지되고 브랜치는 자동으로 지워집니다.
+
+`develop`은 CI 통과를 요구하도록 보호되어 있습니다. CI 설정은 `.github/workflows/ci.yml`에 있습니다.
 
 ## 앞으로 할 일
 
