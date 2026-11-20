@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { Marker } from 'react-native-maps';
-
-import { photoUri } from '@/lib/photoStorage';
-import type { PinSummary } from '@/lib/types';
+import { Marker, type LatLng } from 'react-native-maps';
 
 type Props = {
-  pin: PinSummary;
+  coordinate: LatLng;
+  /** 대표 사진 주소 (내 핀은 파일 경로, 공유 핀은 서명 URL) */
+  coverUri: string | null;
+  photoCount: number;
+  /** 공유 앨범의 핀이면 테두리 색을 바꿔 구분한다 */
+  shared?: boolean;
   onPress: () => void;
 };
 
 /** 대표 사진을 동그란 썸네일로 보여 주는 지도 핀 */
-export function PhotoMarker({ pin, onPress }: Props) {
+export function PhotoMarker({ coordinate, coverUri, photoCount, shared = false, onPress }: Props) {
   const [loaded, setLoaded] = useState(false);
   const [frozen, setFrozen] = useState(false);
-  const uri = pin.coverFileName ? photoUri(pin.coverFileName) : null;
 
   // 사진이 그려진 뒤에 화면 추적을 꺼야 지도가 가볍다.
   // 안드로이드는 이미지가 실제로 그려지기 전에 끄면 빈 핀이 남아서 조금 기다렸다 끈다.
@@ -24,18 +25,15 @@ export function PhotoMarker({ pin, onPress }: Props) {
     return () => clearTimeout(timer);
   }, [loaded]);
 
+  const ringColor = shared ? SHARED_COLOR : '#fff';
+
   return (
-    <Marker
-      coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-      anchor={{ x: 0.5, y: 1 }}
-      tracksViewChanges={!frozen}
-      onPress={onPress}
-    >
+    <Marker coordinate={coordinate} anchor={{ x: 0.5, y: 1 }} tracksViewChanges={!frozen} onPress={onPress}>
       <View style={styles.wrap}>
-        <View style={styles.bubble}>
-          {uri ? (
+        <View style={[styles.bubble, { borderColor: ringColor, backgroundColor: ringColor }]}>
+          {coverUri ? (
             <Image
-              source={{ uri }}
+              source={{ uri: coverUri }}
               style={styles.thumb}
               onLoad={() => setLoaded(true)}
               onError={() => setLoaded(true)}
@@ -44,10 +42,15 @@ export function PhotoMarker({ pin, onPress }: Props) {
             <View style={[styles.thumb, styles.empty]} onLayout={() => setLoaded(true)} />
           )}
         </View>
-        <View style={styles.tail} />
-        {pin.photoCount > 1 && (
+        <View style={[styles.tail, { borderTopColor: ringColor }]} />
+        {photoCount > 1 && (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{pin.photoCount}</Text>
+            <Text style={styles.badgeText}>{photoCount}</Text>
+          </View>
+        )}
+        {shared && (
+          <View style={styles.sharedBadge}>
+            <Text style={styles.sharedBadgeText}>👥</Text>
           </View>
         )}
       </View>
@@ -56,6 +59,7 @@ export function PhotoMarker({ pin, onPress }: Props) {
 }
 
 const SIZE = 52;
+const SHARED_COLOR = '#ff9f1a';
 
 const styles = StyleSheet.create({
   wrap: {
@@ -68,8 +72,6 @@ const styles = StyleSheet.create({
     height: SIZE,
     borderRadius: SIZE / 2,
     borderWidth: 3,
-    borderColor: '#fff',
-    backgroundColor: '#fff',
     overflow: 'hidden',
     elevation: 4,
     shadowColor: '#000',
@@ -92,7 +94,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 9,
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
-    borderTopColor: '#fff',
     marginTop: -1,
   },
   badge: {
@@ -111,5 +112,19 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 11,
     fontWeight: '700',
+  },
+  sharedBadge: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sharedBadgeText: {
+    fontSize: 11,
   },
 });

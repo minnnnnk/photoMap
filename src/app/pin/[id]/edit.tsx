@@ -46,6 +46,7 @@ export default function EditPinScreen() {
       initialValues={initialValues}
       initialSource="saved"
       submitLabel="수정 내용 저장"
+      albumMode="local"
       onSubmit={(values) => editPin(db, id, values)}
       onSaved={() => router.back()}
     />

@@ -21,6 +21,7 @@ import { gpsFromExif, takenAtFromExif } from '@/lib/exif';
 import { formatCoord } from '@/lib/format';
 import {
   formPhotoUri,
+  type AlbumChoice,
   type FormPhoto,
   type NewFormPhoto,
   type PinFormValues,
@@ -44,6 +45,8 @@ type Props = {
   initialValues: PinFormValues;
   initialSource: LocationSource;
   submitLabel: string;
+  /** any: 이 기기 앨범과 공유 앨범 모두, local: 이 기기 앨범만 */
+  albumMode: 'any' | 'local';
   /** 저장만 한다. 실패하면 throw 한다. */
   onSubmit: (values: PinFormValues) => Promise<void>;
   /** 저장에 성공한 뒤 호출된다. 화면 닫기는 여기서 한다. */
@@ -51,7 +54,14 @@ type Props = {
 };
 
 /** 사진 추가 화면과 핀 수정 화면이 함께 쓰는 입력 양식 */
-export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, onSaved }: Props) {
+export function PinForm({
+  initialValues,
+  initialSource,
+  submitLabel,
+  albumMode,
+  onSubmit,
+  onSaved,
+}: Props) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
 
@@ -66,7 +76,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
   const [photos, setPhotos] = useState<FormPhoto[]>(initialValues.photos);
   const [title, setTitle] = useState(initialValues.title);
   const [memo, setMemo] = useState(initialValues.memo);
-  const [albumId, setAlbumId] = useState<string | null>(initialValues.albumId);
+  const [album, setAlbum] = useState<AlbumChoice>(initialValues.album);
   const [saving, setSaving] = useState(false);
   // 저장했거나 "나가기"를 고른 뒤에는 더 묻지 않는다.
   const [leaving, setLeaving] = useState(false);
@@ -74,7 +84,8 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
   const isDirty =
     title !== initial.title ||
     memo !== initial.memo ||
-    albumId !== initial.albumId ||
+    album?.kind !== initial.album?.kind ||
+    album?.id !== initial.album?.id ||
     coord.latitude !== initialCoord.latitude ||
     coord.longitude !== initialCoord.longitude ||
     photos.length !== initial.photos.length ||
@@ -164,7 +175,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
       await onSubmit({
         title: title.trim(),
         memo: memo.trim(),
-        albumId,
+        album,
         latitude: coord.latitude,
         longitude: coord.longitude,
         photos,
@@ -273,7 +284,7 @@ export function PinForm({ initialValues, initialSource, submitLabel, onSubmit, o
       />
 
       <Text style={styles.label}>앨범</Text>
-      <AlbumPicker value={albumId} onChange={setAlbumId} />
+      <AlbumPicker value={album} onChange={setAlbum} allowShared={albumMode === 'any'} />
 
       <Text style={styles.label}>메모</Text>
       <TextInput
