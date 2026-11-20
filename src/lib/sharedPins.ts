@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 
 import { contentTypeOf, extensionOf } from './photoStorage';
-import type { NewFormPhoto, PinFormValues } from './pinActions';
+import type { NewFormPhoto, PinFormValues, RemoteFormPhoto } from './pinActions';
 import { forgetSignedUrls } from './sharedPhotoUrls';
 import { requireSupabase, SHARED_PHOTO_BUCKET } from './supabase';
 import type { Coord } from './types';
@@ -238,4 +238,92 @@ export async function deleteSharedPin(pin: { id: string; photoPaths: string[] })
   const { data, error } = await client.from('shared_pins').delete().eq('id', pin.id).select('id');
   if (error) throw error;
   if (data.length === 0) throw new Error('이 핀을 지울 권한이 없어요');
+}
+
+/** 공유 핀 상세를 수정 화면의 입력 값으로 바꾼다. 서버 사진은 서명 URL로 보여 준다. */
+export function toSharedFormValues(detail: SharedPinDetail, urls: Map<string, string>): PinFormValues {
+  return {
+    title: detail.pin.title,
+    memo: detail.pin.memo,
+    latitude: detail.pin.latitude,
+    longitude: detail.pin.longitude,
+    album: { kind: 'shared', id: detail.pin.albumId },
+    photos: detail.photos.map(
+      (p): RemoteFormPhoto => ({
+        kind: 'remote',
+        id: p.id,
+        storagePath: p.storagePath,
+        uri: urls.get(p.storagePath) ?? '',
+        width: p.width,
+        height: p.height,
+        takenAt: p.takenAt,
+        gps: p.gps,
+      }),
+    ),
+  };
+}
+
+/**
+ * 공유 핀을 고친다 (올린 사람만).
+ * 1. 새 사진을 저장소에 먼저 올린다.
+ * 2. 서버 함수 update_shared_pin이 핀 내용·사진 빼기·순서·새 사진 행을 한 트랜잭션으로 반영한다.
+ * 3. 빠진 사진 파일을 저장소에서 지운다.
+ * 2에서 실패하면 1에서 올린 파일을 지워 되돌린다.
+ */
+export async function editSharedPin(pinId: string, albumId: string, values: PinFormValues): Promise<void> {
+  const client = requireSupabase();
+  const bucket = client.storage.from(SHARED_PHOTO_BUCKET);
+  const keep: { id: string; sort_order: number }[] = [];
+  const newRows: Record<string, unknown>[] = [];
+  const uploaded: string[] = [];
+
+  try {
+    for (const [index, photo] of values.photos.entries()) {
+      if (photo.kind === 'remote') {
+        keep.push({ id: photo.id, sort_order: index });
+        continue;
+      }
+      if (photo.kind !== 'new') throw new Error('이 기기에만 있는 사진은 공유 핀에 넣을 수 없어요');
+      const path = storagePathFor(albumId, photo);
+      const bytes = await new File(photo.sourceUri).bytes();
+      const { error } = await bucket.upload(path, toArrayBuffer(bytes), {
+        contentType: contentTypeOf(path),
+        upsert: false,
+      });
+      if (error) throw error;
+      uploaded.push(path);
+      newRows.push({
+        id: photo.id,
+        storage_path: path,
+        width: photo.width,
+        height: photo.height,
+        taken_at: photo.takenAt,
+        latitude: photo.gps?.latitude ?? null,
+        longitude: photo.gps?.longitude ?? null,
+        sort_order: index,
+      });
+    }
+
+    const { data, error } = await client.rpc('update_shared_pin', {
+      p_pin_id: pinId,
+      p_title: values.title,
+      p_memo: values.memo,
+      p_latitude: values.latitude,
+      p_longitude: values.longitude,
+      p_keep: keep,
+      p_new_photos: newRows,
+    });
+    if (error) throw error;
+
+    // 빠진 사진 파일 정리. 실패해도 핀 수정은 이미 끝났으므로 경고만 남긴다.
+    const removed = (data as string[] | null) ?? [];
+    if (removed.length > 0) {
+      const { error: removeError } = await bucket.remove(removed);
+      if (removeError) console.warn('빠진 공유 사진 파일 삭제 실패', removeError);
+      forgetSignedUrls(removed);
+    }
+  } catch (e) {
+    if (uploaded.length > 0) await bucket.remove(uploaded).then(undefined, () => undefined);
+    throw e;
+  }
 }

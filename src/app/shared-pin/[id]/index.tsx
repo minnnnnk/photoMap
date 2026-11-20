@@ -106,7 +106,22 @@ export default function SharedPinScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: pin.title || '제목 없음' }} />
+      <Stack.Screen
+        options={{
+          title: pin.title || '제목 없음',
+          headerRight: isAuthor
+            ? () => (
+                <Pressable
+                  onPress={() => router.push(`/shared-pin/${pin.id}/edit`)}
+                  hitSlop={10}
+                  accessibilityLabel="공유 핀 수정"
+                >
+                  <Text style={styles.headerButton}>수정</Text>
+                </Pressable>
+              )
+            : undefined,
+        }}
+      />
       <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         <View>
           <ScrollView
@@ -166,6 +181,7 @@ export default function SharedPinScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#fff' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  headerButton: { fontSize: 16, fontWeight: '600', color: '#2f6bff' },
   muted: { color: '#9aa1ad' },
   missing: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f3f6' },
   pager: {

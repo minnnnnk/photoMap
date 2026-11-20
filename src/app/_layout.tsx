@@ -19,7 +19,11 @@ export default function RootLayout() {
           <Stack.Screen name="backup" options={{ title: '백업과 복원', presentation: 'modal' }} />
           <Stack.Screen name="share/index" options={{ title: '공유' }} />
           <Stack.Screen name="share/[id]" options={{ title: '' }} />
-          <Stack.Screen name="shared-pin/[id]" options={{ title: '' }} />
+          <Stack.Screen name="shared-pin/[id]/index" options={{ title: '' }} />
+          <Stack.Screen
+            name="shared-pin/[id]/edit"
+            options={{ title: '공유 핀 수정', presentation: 'modal' }}
+          />
         </Stack>
       </AuthProvider>
     </SQLiteProvider>
