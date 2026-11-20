@@ -11,7 +11,7 @@ function photoDir(): Directory {
   return new Directory(Paths.document, PHOTO_DIR_NAME);
 }
 
-function ensurePhotoDir(): Directory {
+export function ensurePhotoDir(): Directory {
   const dir = photoDir();
   if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
   return dir;
@@ -23,8 +23,12 @@ function extensionOf(uri: string): string {
   return ext && KNOWN_EXTENSIONS.includes(ext) ? ext : 'jpg';
 }
 
+export function photoFile(fileName: string): File {
+  return new File(photoDir(), fileName);
+}
+
 export function photoUri(fileName: string): string {
-  return new File(photoDir(), fileName).uri;
+  return photoFile(fileName).uri;
 }
 
 /** 사진을 앱 폴더로 복사하고, 저장된 파일 이름을 돌려준다. */

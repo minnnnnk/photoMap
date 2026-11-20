@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { Photo, Pin, PinDetail, PinSummary } from '@/lib/types';
 import { getAlbum } from './albums';
 
-type PinRow = {
+export type PinRow = {
   id: string;
   title: string;
   memo: string;
@@ -20,7 +20,7 @@ type PinSummaryRow = PinRow & {
   first_taken_at: string | null;
 };
 
-type PhotoRow = {
+export type PhotoRow = {
   id: string;
   pin_id: string;
   file_name: string;
@@ -33,7 +33,7 @@ type PhotoRow = {
   created_at: string;
 };
 
-const toPin = (r: PinRow): Pin => ({
+export const toPin = (r: PinRow): Pin => ({
   id: r.id,
   title: r.title,
   memo: r.memo,
@@ -44,7 +44,7 @@ const toPin = (r: PinRow): Pin => ({
   updatedAt: r.updated_at,
 });
 
-const toPhoto = (r: PhotoRow): Photo => ({
+export const toPhoto = (r: PhotoRow): Photo => ({
   id: r.id,
   pinId: r.pin_id,
   fileName: r.file_name,

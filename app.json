@@ -37,7 +37,8 @@
         {
           "locationWhenInUsePermission": "지도를 내 위치에서 시작하기 위해 현재 위치를 사용합니다."
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "scheme": "photomap"
   }

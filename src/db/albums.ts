@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { Album, AlbumSummary } from '@/lib/types';
 
-type AlbumRow = {
+export type AlbumRow = {
   id: string;
   name: string;
   created_at: string;
@@ -13,7 +13,7 @@ type AlbumSummaryRow = AlbumRow & {
   pin_count: number;
 };
 
-const toAlbum = (r: AlbumRow): Album => ({
+export const toAlbum = (r: AlbumRow): Album => ({
   id: r.id,
   name: r.name,
   createdAt: r.created_at,
